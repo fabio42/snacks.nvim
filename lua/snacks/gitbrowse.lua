@@ -104,6 +104,7 @@ function M.get_url(repo, fields, opts)
   print("[DEBUG] get_url called with repo: " .. repo)
   print("[DEBUG] get_url opts.what: " .. opts.what)
   print("[DEBUG] get_url fields: " .. vim.inspect(fields))
+  print("[DEBUG] ALL url_patterns keys: " .. vim.inspect(vim.tbl_keys(opts.url_patterns)))
 
   for remote, patterns in pairs(opts.url_patterns) do
     print("[DEBUG] Checking remote pattern: " .. remote)
@@ -171,7 +172,10 @@ end
 
 ---@param opts? snacks.gitbrowse.Config
 function M._open(opts)
+  print("[DEBUG] _open called with opts: " .. vim.inspect(opts))
+  print("[DEBUG] Snacks global config for gitbrowse: " .. vim.inspect(Snacks.config.get("gitbrowse")))
   opts = Snacks.config.get("gitbrowse", defaults, opts)
+  print("[DEBUG] After config.get, url_patterns keys: " .. vim.inspect(vim.tbl_keys(opts.url_patterns or {})))
   local file = vim.api.nvim_buf_get_name(0) ---@type string?
   print("[DEBUG] Initial buffer name: " .. vim.inspect(file))
   local stat = file and uv.fs_stat(file)
