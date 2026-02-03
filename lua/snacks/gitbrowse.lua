@@ -101,18 +101,41 @@ end
 ---@param opts? snacks.gitbrowse.Config
 function M.get_url(repo, fields, opts)
   opts = Snacks.config.get("gitbrowse", defaults, opts)
+  print("[DEBUG] get_url called with repo: " .. repo)
+  print("[DEBUG] get_url opts.what: " .. opts.what)
+  print("[DEBUG] get_url fields: " .. vim.inspect(fields))
+
   for remote, patterns in pairs(opts.url_patterns) do
+    print("[DEBUG] Checking remote pattern: " .. remote)
     if repo:find(remote) then
+      print("[DEBUG] Matched remote pattern: " .. remote)
+      print("[DEBUG] Available patterns for this remote: " .. vim.inspect(vim.tbl_keys(patterns)))
       local pattern = patterns[opts.what]
+      print("[DEBUG] Pattern for opts.what '" .. opts.what .. "': " .. vim.inspect(pattern))
+
       if type(pattern) == "string" then
-        return repo .. pattern:gsub("(%b{})", function(key)
-          return fields[key:sub(2, -2)] or key
+        print("[DEBUG] Using string pattern")
+        local url = repo .. pattern:gsub("(%b{})", function(key)
+          local field_name = key:sub(2, -2)
+          local value = fields[field_name]
+          print("[DEBUG] Replacing " .. key .. " with " .. vim.inspect(value))
+          return value or key
         end)
+        print("[DEBUG] Final URL: " .. url)
+        return url
       elseif type(pattern) == "function" then
-        return repo .. pattern(fields)
+        print("[DEBUG] Using function pattern")
+        local result = pattern(fields)
+        print("[DEBUG] Function returned: " .. vim.inspect(result))
+        local url = repo .. result
+        print("[DEBUG] Final URL: " .. url)
+        return url
+      else
+        print("[DEBUG] No pattern found for opts.what '" .. opts.what .. "'")
       end
     end
   end
+  print("[DEBUG] No matching remote pattern, returning bare repo: " .. repo)
   return repo
 end
 
@@ -150,8 +173,13 @@ end
 function M._open(opts)
   opts = Snacks.config.get("gitbrowse", defaults, opts)
   local file = vim.api.nvim_buf_get_name(0) ---@type string?
-  file = file and (uv.fs_stat(file) or {}).type == "file" and vim.fs.normalize(file) or nil
+  print("[DEBUG] Initial buffer name: " .. vim.inspect(file))
+  local stat = file and uv.fs_stat(file)
+  print("[DEBUG] File stat: " .. vim.inspect(stat))
+  file = file and (stat or {}).type == "file" and vim.fs.normalize(file) or nil
+  print("[DEBUG] Normalized file path: " .. vim.inspect(file))
   local cwd = file and vim.fn.fnamemodify(file, ":h") or vim.fn.getcwd()
+  print("[DEBUG] Working directory: " .. cwd)
 
   ---@type snacks.gitbrowse.Fields
   local fields = {
@@ -162,6 +190,7 @@ function M._open(opts)
     line_end = opts.line_end,
     commit = opts.commit,
   }
+  print("[DEBUG] Initial fields: " .. vim.inspect(fields))
 
   if not fields.commit then
     if opts.what == "permalink" then
@@ -192,31 +221,44 @@ function M._open(opts)
     fields.line_end = fields.line_end or fields.line_start
   end
   fields.line_count = fields.line_end - fields.line_start + 1
+  print("[DEBUG] Final fields with lines: " .. vim.inspect(fields))
+  print("[DEBUG] opts.what before fallback logic: " .. opts.what)
 
   if not fields.commit and (opts.what == "commit" or opts.what == "permalink") then
+    print("[DEBUG] Changing opts.what from '" .. opts.what .. "' to 'file' (no commit)")
     opts.what = "file"
   end
   if not fields.commit and not fields.file then
+    print("[DEBUG] Changing opts.what to 'branch' (no commit and no file)")
     opts.what = "branch"
   end
   if not fields.commit and not fields.branch then
+    print("[DEBUG] Changing opts.what to 'repo' (no commit and no branch)")
     opts.what = "repo"
   end
+  print("[DEBUG] opts.what after fallback logic: " .. opts.what)
 
   local remotes = {} ---@type {name:string, url:string}[]
 
+  print("[DEBUG] Processing git remotes...")
   for _, line in ipairs(system({ "git", "-C", cwd, "remote", "-v" }, "Failed to get git remotes")) do
+    print("[DEBUG] Remote line: " .. line)
     local name, remote = line:match("(%S+)%s+(%S+)%s+%(fetch%)")
     if name and remote then
+      print("[DEBUG] Parsed remote - name: " .. name .. ", url: " .. remote)
       local repo = M.get_repo(remote, opts)
+      print("[DEBUG] Transformed repo URL: " .. repo)
       if repo then
+        local url = M.get_url(repo, fields, opts)
+        print("[DEBUG] Generated final URL: " .. url)
         table.insert(remotes, {
           name = name,
-          url = M.get_url(repo, fields, opts),
+          url = url,
         })
       end
     end
   end
+  print("[DEBUG] Total remotes found: " .. #remotes)
 
   local function open(remote)
     if remote then
